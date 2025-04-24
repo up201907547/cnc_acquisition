@@ -1,0 +1,16 @@
+{
+    "Current": {
+        "Cu": "NI-6421/ai0",
+        "Cw": "NI-6421/ai1"
+    },
+    "Vibration": {
+        "Ax": "NI-6421/ai4",
+        "Ay": "NI-6421/ai5",
+        "Az": "NI-6421/ai6"
+    },
+    "Force": {
+        "Fx": "NI-6421/ai10",
+        "Fy": "NI-6421/ai3",
+        "Fz": "NI-6421/ai11"
+    }
+}

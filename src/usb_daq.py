@@ -1,0 +1,101 @@
+import threading
+import queue
+import time
+import nidaqmx
+from nidaqmx.system import System
+from nidaqmx.constants import AcquisitionType
+from nidaqmx.stream_readers import AnalogMultiChannelReader
+from nidaqmx.constants import TerminalConfiguration
+import numpy as np
+import json
+import collections
+import pandas as pd
+import os
+
+base_dir = os.path.dirname(os.path.dirname(__file__))
+
+def check_daq_connection():
+    try:
+        # Check if the device is available in the system
+        system = nidaqmx.system.System.local()
+        devices = system.devices
+        device_names = [device.name for device in devices]
+        
+        if not any("NI-6210" in device_name for device_name in device_names):
+            return "DAQ device not found."
+        return None
+    except Exception as e:
+        return f"DAQ connection failed: {str(e)}"
+
+class USB_DAQ:
+    def __init__(self, sampling_rate, selected_sensors, data_queue, running_flag, influx_handler=None, error_callback=None):
+        self.is_running = running_flag
+        with open(os.path.join(base_dir, r"config\daq_ch_map.json"), "r") as file:
+            self.channel_mapping = json.load(file)
+
+        self.sampling_rate = sampling_rate
+        self.selected_sensors = selected_sensors
+        self.error_callback = error_callback
+    
+        # Using deque instead of queue.Queue
+        self.buffer_size = int(sampling_rate/10)
+        #self.daq_data_deque = collections.deque(maxlen=self.buffer_size)
+        self.daq_data_queue = data_queue
+
+    def read_daq_sensor(self):
+        """Internal method to acquire data and put it in the queue."""
+        self.plot_data = []
+
+        with nidaqmx.Task() as task:
+            #self.count = 0
+            self.header = []
+            # Add channels based on selected sensors
+            for sensor in self.selected_sensors:
+                channels = self.channel_mapping.get(sensor)
+                for channel_name, channel_id in channels.items():
+                    if channel_id:
+                        if sensor == "Force":
+                            task.ai_channels.add_ai_voltage_chan(channel_id, terminal_config=TerminalConfiguration.RSE, min_val=-10, max_val=10)
+                        elif sensor == "Current":
+                            if channel_name == "CI":
+                                task.ai_channels.add_ai_voltage_chan(channel_id, terminal_config=TerminalConfiguration.DIFF, min_val=-1, max_val=1)
+                            else:
+                                task.ai_channels.add_ai_voltage_chan(channel_id, terminal_config=TerminalConfiguration.DIFF, min_val=-10, max_val=10)
+                        else:
+                            task.ai_channels.add_ai_voltage_chan(channel_id, terminal_config=TerminalConfiguration.DIFF, min_val=-10, max_val=10)
+                
+            # Configure task timing
+            task.timing.cfg_samp_clk_timing(
+                rate=self.sampling_rate,
+                sample_mode=AcquisitionType.CONTINUOUS,
+                samps_per_chan=self.buffer_size
+            )
+
+            # Create the reader and buffer
+            reader = AnalogMultiChannelReader(task.in_stream)
+            num_channels = len(task.ai_channels)
+            buffer = np.zeros((num_channels, self.buffer_size))
+
+            try:
+                while self.is_running.is_set():
+                    # Read data and put it in the queue
+                    reader.read_many_sample(buffer, self.buffer_size)
+                        
+                    # Save data to file periodically
+                    self.daq_data_queue.put(buffer.copy(), timeout=1)
+                    #self.count += len(buffer[0].copy())
+
+                    if not self.is_running.is_set():
+                        break
+
+            except nidaqmx.errors.DaqReadError as e:
+                #self.stop_acquisition()
+                print("DaqReadError encountered:", e)
+
+                if self.error_callback:
+                    self.error_callback(e)
+
+    def stop_acquisition(self):
+        """Stop data acquisition and save data."""
+        self.is_running.clear()
+        #print(self.count)
