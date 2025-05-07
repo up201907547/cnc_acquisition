@@ -6,6 +6,7 @@ from nidaqmx.system import System
 from nidaqmx.constants import AcquisitionType
 from nidaqmx.stream_readers import AnalogMultiChannelReader
 from nidaqmx.constants import TerminalConfiguration
+from nidaqmx.constants import Level, TriggerType
 import numpy as np
 import json
 import collections
@@ -28,7 +29,7 @@ def check_daq_connection():
         return f"DAQ connection failed: {str(e)}"
 
 class USB_DAQ:
-    def __init__(self, sampling_rate, selected_sensors, data_queue, running_flag, influx_handler=None, error_callback=None):
+    def __init__(self, sampling_rate, selected_sensors, data_queue, running_flag, handler=None, auto = False, error_callback=None):
         self.is_running = running_flag
         with open(os.path.join(base_dir, r"config\daq_ch_map.json"), "r") as file:
             self.channel_mapping = json.load(file)
@@ -36,6 +37,7 @@ class USB_DAQ:
         self.sampling_rate = sampling_rate
         self.selected_sensors = selected_sensors
         self.error_callback = error_callback
+        self.auto = auto
     
         # Using deque instead of queue.Queue
         self.buffer_size = int(sampling_rate/10)
@@ -76,24 +78,51 @@ class USB_DAQ:
             num_channels = len(task.ai_channels)
             buffer = np.zeros((num_channels, self.buffer_size))
 
-            try:
-                while self.is_running.is_set():
-                    # Read data and put it in the queue
+            if not self.auto:
+                print("Manual") 
+                try:
+                    while self.is_running.is_set():
+                        # Read data and put it in the queue
+                        reader.read_many_sample(buffer, self.buffer_size)
+                            
+                        # Save data to file periodically
+                        self.daq_data_queue.put(buffer.copy(), timeout=1)
+                        #self.count += len(buffer[0].copy())
+
+                        if not self.is_running.is_set():
+                            break
+
+                except nidaqmx.errors.DaqReadError as e:
+                    #self.stop_acquisition()
+                    print("DaqReadError encountered:", e)
+
+                    if self.error_callback:
+                        self.error_callback(e)
+            else:
+                print("Auto")                
+                # Configure digital edge trigger on PFI4
+                task.triggers.start_trigger.cfg_dig_edge_start_trig("/NI-6421/PFI8")
+
+                task.triggers.pause_trigger.trig_type = TriggerType.DIGITAL_LEVEL
+                task.triggers.pause_trigger.dig_lvl_src = "/NI-6421/PFI9"
+                task.triggers.pause_trigger.dig_lvl_when = Level.LOW
+
+                task.start()
+                try:
                     reader.read_many_sample(buffer, self.buffer_size)
-                        
+                                
                     # Save data to file periodically
                     self.daq_data_queue.put(buffer.copy(), timeout=1)
                     #self.count += len(buffer[0].copy())
 
-                    if not self.is_running.is_set():
-                        break
+                except nidaqmx.errors.DaqReadError as e:
+                        #self.stop_acquisition()
+                        print("DaqReadError encountered:", e)
 
-            except nidaqmx.errors.DaqReadError as e:
-                #self.stop_acquisition()
-                print("DaqReadError encountered:", e)
-
-                if self.error_callback:
-                    self.error_callback(e)
+                        if self.error_callback:
+                            self.error_callback(e)
+                finally:
+                    task.stop()
 
     def stop_acquisition(self):
         """Stop data acquisition and save data."""

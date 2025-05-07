@@ -1,7 +1,6 @@
 {
     "Current": {
-        "Cu": "NI-6421/ai0",
-        "Cw": "NI-6421/ai1"
+        "Cu": "NI-6421/ai0"
     },
     "Vibration": {
         "Ax": "NI-6421/ai4",
