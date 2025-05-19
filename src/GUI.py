@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 from usb_daq import USB_DAQ
 from old.mqtt import MQTTStreamer
+from init_server_grafana import InitServer
 import pyaudio
 import wave
 from tkinter import Tk, Frame, Button, Label, BooleanVar, Checkbutton, font, Entry, messagebox
@@ -27,13 +28,15 @@ class Main():
         self.is_running = threading.Event()
         self.save_path = os.path.join(base_dir, r"data\Test_07_05")
 
-        self.sampling_rate = 10
+        self.sampling_rate = 1000
         self.selected_sensors_daq = ["Current"]
 
         self.use_csv = False
         self.use_influx = True
         self.manual = True
         self.auto = False
+
+        self.app = InitServer()
 
         #GUI setup
         self.window = Tk()
@@ -246,6 +249,8 @@ class Main():
         self.exp_name = timestamp
 
         if "DAQ" in self.selected_sensors:
+            #if self.auto:
+                #self.threads.append(threading.Thread(target=self.reader_DAQ.watch_for_stop_signal))
             self.threads.append(threading.Thread(target=self.reader_DAQ.read_daq_sensor, daemon=True))
             self.threads.append(threading.Thread(target=self.telegraf_handler.save_data, args=(timestamp, self.header,), daemon=True))
 
@@ -298,6 +303,7 @@ class Main():
     def restart_program(self):
         """Restart the current Python program."""
         python = sys.executable  # Path to the Python interpreter
+        self.app.stop()
         os.execl(python, python, *sys.argv)
 
     def on_close(self):
@@ -305,6 +311,9 @@ class Main():
         print("Closing the application...")
         self.telegraf_handler.close_connection()
         self.window.quit()
+        self.app.close()
+
+        time.sleep(1)
 
 if __name__ == "__main__":
     main = Main()

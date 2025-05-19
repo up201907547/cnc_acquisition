@@ -72,6 +72,8 @@ class USB_DAQ:
                 sample_mode=AcquisitionType.CONTINUOUS,
                 samps_per_chan=self.buffer_size
             )
+            #task.timing.first_samp_clk_timescale = nidaqmx.constants.TimeUnits.NANOSECONDS
+            #first = task.timing.first_samp_timestamp_val
 
             # Create the reader and buffer
             reader = AnalogMultiChannelReader(task.in_stream)
@@ -79,7 +81,7 @@ class USB_DAQ:
             buffer = np.zeros((num_channels, self.buffer_size))
 
             if not self.auto:
-                print("Manual") 
+                print("Manual")
                 try:
                     while self.is_running.is_set():
                         # Read data and put it in the queue
@@ -99,21 +101,39 @@ class USB_DAQ:
                     if self.error_callback:
                         self.error_callback(e)
             else:
+                #with nidaqmx.Task() as trig_task:
+                    
+                    #trig_task.do_channels.add_do_chan("/NI-6210/PFI6")
+                    #previous_state = False
+                
                 print("Auto")                
-                # Configure digital edge trigger on PFI4
-                task.triggers.start_trigger.cfg_dig_edge_start_trig("/NI-6421/PFI8")
+
+                task.triggers.start_trigger.trig_type = TriggerType.DIGITAL_EDGE
+                task.triggers.start_trigger.dig_edge_src = "/NI-6210/PFI4"
+                task.triggers.start_trigger.dig_edge_edge = nidaqmx.constants.Edge.RISING
 
                 task.triggers.pause_trigger.trig_type = TriggerType.DIGITAL_LEVEL
-                task.triggers.pause_trigger.dig_lvl_src = "/NI-6421/PFI9"
-                task.triggers.pause_trigger.dig_lvl_when = Level.LOW
+                task.triggers.pause_trigger.dig_lvl_src = "/NI-6210/PFI5"
+                task.triggers.pause_trigger.dig_lvl_when = Level.HIGH
 
                 task.start()
                 try:
-                    reader.read_many_sample(buffer, self.buffer_size)
-                                
-                    # Save data to file periodically
-                    self.daq_data_queue.put(buffer.copy(), timeout=1)
-                    #self.count += len(buffer[0].copy())
+                    while self.is_running.is_set():
+                        # Read data and put it in the queue
+                        reader.read_many_sample(buffer, self.buffer_size)
+                            
+                        # Save data to file periodically
+                        self.daq_data_queue.put(buffer.copy(), timeout=1)
+                        #self.count += len(buffer[0].copy())
+
+                            #current_state = trig_task.read()
+                            #print("Current state:", current_state, "Previous state:", previous_state)
+                            #if current_state and not previous_state:  # rising edge
+                            #    self.stop_acquisition()
+                            #    task.stop()
+
+                        if not self.is_running.is_set():
+                            break
 
                 except nidaqmx.errors.DaqReadError as e:
                         #self.stop_acquisition()
