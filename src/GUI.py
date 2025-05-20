@@ -29,7 +29,7 @@ class Main():
         self.save_path = os.path.join(base_dir, r"data\Test_07_05")
 
         self.sampling_rate = 1000
-        self.selected_sensors_daq = ["Current"]
+        self.selected_sensors_daq = ["Current", "Vibration", "Force"] #Write the desired sensors here ex. ["Current", "Vibration", "Force"]
 
         self.use_csv = False
         self.use_influx = True
@@ -106,8 +106,8 @@ class Main():
         storage_menu = tk.OptionMenu(self.selector_frame, self.op_option, "Manual", "Auto")
         storage_menu.grid(row=1, column=1, sticky="w")
 
-        self.test_button = Button(self.selector_frame, text="Test", width=10, height=1, state="normal", command=self.test_bool)
-        self.test_button.grid(row=0, column=3, padx=0, pady=0, sticky="")
+        #self.test_button = Button(self.selector_frame, text="Test", width=10, height=1, state="normal", command=self.test_bool)
+        #self.test_button.grid(row=0, column=3, padx=0, pady=0, sticky="")
 
     def update_storage_flags(self, *args):
         selected = self.storage_option.get()
@@ -289,7 +289,7 @@ class Main():
             if not os.path.exists(self.exp_name_folder):
                 os.makedirs(self.exp_name_folder)
 
-            time.sleep(1)
+            time.sleep(2)
             save_csv_influx(self.exp_name, self.exp_name_folder)
 
         self.status_label.config(text="Finished Aquiring \n Press Restart for another run!", bg="blue")

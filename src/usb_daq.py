@@ -86,9 +86,18 @@ class USB_DAQ:
                     while self.is_running.is_set():
                         # Read data and put it in the queue
                         reader.read_many_sample(buffer, self.buffer_size)
-                            
+                        batch_id = time.time_ns()
+
+                        data_with_id = {
+                            "data": buffer.copy(),
+                            "batch_id": batch_id
+                        }
+                        
+                        self.daq_data_queue.put(data_with_id, timeout=1)
+
+
                         # Save data to file periodically
-                        self.daq_data_queue.put(buffer.copy(), timeout=1)
+                        #self.daq_data_queue.put(buffer.copy(), timeout=1)
                         #self.count += len(buffer[0].copy())
 
                         if not self.is_running.is_set():
