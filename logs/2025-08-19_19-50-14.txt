@@ -1,0 +1,9 @@
+Starting Logging
+Experiment Name: 2025-08-19_19-50-14
+Selected Sensors: ['Cu', 'Cu2', 'Ax', 'Ay', 'Az', 'Fx', 'Fy', 'Fz']
+Sampling Rate: 20000 Hz
+Acquisition stopped due to time limit.
+Total Time DAQ: 120.10268998146057 s
+Total data points sent to InfluxDB: 2402000
+Total data points actually saved in InfluxDB: 2396667
+Total time start/stop: 120.41 s

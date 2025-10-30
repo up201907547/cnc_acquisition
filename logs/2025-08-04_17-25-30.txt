@@ -1,0 +1,8 @@
+Starting Logging
+Experiment Name: 2025-08-04_17-25-30
+Selected Sensors: ['Cu', 'Cu2']
+Sampling Rate: 1000 Hz
+Stopped by digital input
+Total Time DAQ: 141.59301924705505 s
+Total data points sent to InfluxDB: 141600
+Total time start/stop: 148.01 s

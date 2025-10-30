@@ -1,0 +1,4 @@
+Starting Logging
+Experiment Name: 2025-08-04_14-50-44
+Selected Sensors: ['Cu', 'Cu2']
+Sampling Rate: 1000 Hz

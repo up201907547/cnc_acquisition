@@ -1,15 +1,16 @@
 {
     "Current": {
-        "Cu": "NI-6421/ai0"
+        "Cu": "NI-6210/ai7",
+        "Cu2": "NI-6210/ai3"
     },
     "Vibration": {
-        "Ax": "NI-6421/ai4",
-        "Ay": "NI-6421/ai5",
-        "Az": "NI-6421/ai6"
+        "Ax": "NI-6210/ai4",
+        "Ay": "NI-6210/ai5",
+        "Az": "NI-6210/ai6"
     },
     "Force": {
-        "Fx": "NI-6421/ai10",
-        "Fy": "NI-6421/ai3",
-        "Fz": "NI-6421/ai11"
+        "Fx": "NI-6210/ai10",
+        "Fy": "NI-6210/ai1",
+        "Fz": "NI-6210/ai11"
     }
 }

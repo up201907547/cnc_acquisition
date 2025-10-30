@@ -12,6 +12,7 @@ import json
 import collections
 import pandas as pd
 import os
+import logging
 
 base_dir = os.path.dirname(os.path.dirname(__file__))
 
@@ -29,7 +30,7 @@ def check_daq_connection():
         return f"DAQ connection failed: {str(e)}"
 
 class USB_DAQ:
-    def __init__(self, sampling_rate, selected_sensors, data_queue, running_flag, handler=None, auto = False, error_callback=None):
+    def __init__(self, sampling_rate, selected_sensors, data_queue, running_flag, handler=None, auto = False, error_callback=None, timed=False, time_limit=60, start_callback=None, stop_callback=None):
         self.is_running = running_flag
         with open(os.path.join(base_dir, r"config\daq_ch_map.json"), "r") as file:
             self.channel_mapping = json.load(file)
@@ -38,6 +39,10 @@ class USB_DAQ:
         self.selected_sensors = selected_sensors
         self.error_callback = error_callback
         self.auto = auto
+        self.timed = timed
+        self.time_limit = time_limit
+        self.start_callback = start_callback
+        self.stop_callback = stop_callback
     
         # Using deque instead of queue.Queue
         self.buffer_size = int(sampling_rate/10)
@@ -59,7 +64,7 @@ class USB_DAQ:
                         if sensor == "Force":
                             task.ai_channels.add_ai_voltage_chan(channel_id, terminal_config=TerminalConfiguration.RSE, min_val=-10, max_val=10)
                         elif sensor == "Current":
-                            if channel_name == "CI":
+                            if channel_name == "Cu*":
                                 task.ai_channels.add_ai_voltage_chan(channel_id, terminal_config=TerminalConfiguration.DIFF, min_val=-1, max_val=1)
                             else:
                                 task.ai_channels.add_ai_voltage_chan(channel_id, terminal_config=TerminalConfiguration.DIFF, min_val=-10, max_val=10)
@@ -82,10 +87,23 @@ class USB_DAQ:
 
             if not self.auto:
                 print("Manual")
+                first_batch = True
                 try:
                     while self.is_running.is_set():
                         # Read data and put it in the queue
                         reader.read_many_sample(buffer, self.buffer_size)
+
+                        if first_batch:
+                            first_batch = False
+                            self.start_time = time.time()
+                            if self.start_callback:
+                                self.start_callback()
+
+                        # Stop if time limit exceeded
+                        if time.time() - self.start_time >= self.time_limit and self.timed:
+                            logging.info("Acquisition stopped due to time limit.")
+                            break
+
                         batch_id = time.time_ns()
 
                         data_with_id = {
@@ -102,58 +120,86 @@ class USB_DAQ:
 
                         if not self.is_running.is_set():
                             break
+                    logging.info(f"Total Time DAQ: {time.time() - self.start_time} s")
+                    if self.stop_callback:
+                        self.stop_callback()
+                    if self.is_running.is_set():
+                        self.error_callback(None)
+                    
 
                 except nidaqmx.errors.DaqReadError as e:
                     #self.stop_acquisition()
                     print("DaqReadError encountered:", e)
-
                     if self.error_callback:
                         self.error_callback(e)
             else:
-                #with nidaqmx.Task() as trig_task:
-                    
-                    #trig_task.do_channels.add_do_chan("/NI-6210/PFI6")
-                    #previous_state = False
-                
-                print("Auto")                
+                print("Auto")
+                if self.stop_callback:
+                        self.stop_callback()      
 
                 task.triggers.start_trigger.trig_type = TriggerType.DIGITAL_EDGE
-                task.triggers.start_trigger.dig_edge_src = "/NI-6210/PFI4"
+                task.triggers.start_trigger.dig_edge_src = "/NI-6210/PFI0"
                 task.triggers.start_trigger.dig_edge_edge = nidaqmx.constants.Edge.RISING
 
-                task.triggers.pause_trigger.trig_type = TriggerType.DIGITAL_LEVEL
-                task.triggers.pause_trigger.dig_lvl_src = "/NI-6210/PFI5"
-                task.triggers.pause_trigger.dig_lvl_when = Level.HIGH
+                #task.triggers.pause_trigger.trig_type = TriggerType.DIGITAL_LEVEL
+                #task.triggers.pause_trigger.dig_lvl_src = "/NI-6210/PFI5"
+                #task.triggers.pause_trigger.dig_lvl_when = Level.HIGH
+                first_batch = True
+
+                stop_task = nidaqmx.Task()
+                stop_task.di_channels.add_di_chan("/NI-6210/PFI1")
 
                 task.start()
                 try:
                     while self.is_running.is_set():
-                        # Read data and put it in the queue
-                        reader.read_many_sample(buffer, self.buffer_size)
-                            
-                        # Save data to file periodically
-                        self.daq_data_queue.put(buffer.copy(), timeout=1)
-                        #self.count += len(buffer[0].copy())
 
-                            #current_state = trig_task.read()
-                            #print("Current state:", current_state, "Previous state:", previous_state)
-                            #if current_state and not previous_state:  # rising edge
-                            #    self.stop_acquisition()
-                            #    task.stop()
+                        # Read data and put it in the queue
+                        reader.read_many_sample(buffer, self.buffer_size, timeout=360.0)
+
+                        if stop_task.read():  # Stop if digital pin goes HIGH
+                            logging.info("Stopped by digital input")
+                            break
+
+                        if first_batch:
+                            first_batch = False
+                            self.start_time = time.time()
+                            if self.start_callback:
+                                self.start_callback()
+
+                        if time.time() - self.start_time >= self.time_limit and self.timed:
+                            logging.info("Acquisition stopped due to time limit.")
+                            break
+
+                        batch_id = time.time_ns()
+
+                        data_with_id = {
+                            "data": buffer.copy(),
+                            "batch_id": batch_id
+                        }
+                        
+                        self.daq_data_queue.put(data_with_id, timeout=1)
 
                         if not self.is_running.is_set():
                             break
 
+                    logging.info(f"Total Time DAQ: {time.time() - self.start_time} s")
+
+                    task.stop()
+                    stop_task.close()
+                    #if self.stop_callback:
+                    #    self.stop_callback()
+
+                    if self.is_running.is_set():
+                        self.error_callback(None)
+                    
+
                 except nidaqmx.errors.DaqReadError as e:
                         #self.stop_acquisition()
                         print("DaqReadError encountered:", e)
-
                         if self.error_callback:
                             self.error_callback(e)
-                finally:
-                    task.stop()
+                    
 
     def stop_acquisition(self):
         """Stop data acquisition and save data."""
         self.is_running.clear()
-        #print(self.count)
